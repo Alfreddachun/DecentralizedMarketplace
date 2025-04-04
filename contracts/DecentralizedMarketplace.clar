@@ -173,3 +173,204 @@
     (map-get? Disputes listing-id)
 )
 
+(define-map Categories 
+    uint 
+    (string-ascii 20)
+)
+
+(define-map ListingCategories
+    uint  
+    uint
+)
+
+(define-public (add-category (category-id uint) (category-name (string-ascii 20)))
+    (begin
+        (asserts! (is-eq tx-sender CONTRACT-OWNER) ERR-NOT-AUTHORIZED)
+        (map-set Categories category-id category-name)
+        (ok true)
+    )
+)
+
+(define-public (create-listing-with-category (price uint) (description (string-ascii 256)) (category-id uint))
+    (let
+        (
+            (sender tx-sender)
+            (listing-id (var-get listing-nonce))
+        )
+        (asserts! (is-verified sender) ERR-NOT-VERIFIED)
+        (map-set Listings listing-id {
+            seller: sender,
+            price: price,
+            description: description,
+            active: true,
+            buyer: none,
+            escrow-amount: (calculate-escrow price)
+        })
+        (map-set ListingCategories listing-id category-id)
+        (var-set listing-nonce (+ listing-id u1))
+        (ok listing-id)
+    )
+)
+
+
+(define-map SellerRatings
+    { seller: principal, reviewer: principal }
+    uint
+)
+
+(define-map AverageRatings
+    principal
+    { total-ratings: uint, rating-count: uint }
+)
+
+(define-public (rate-seller (seller principal) (rating uint))
+    (let
+        (
+            (buyer tx-sender)
+            (current-avg (default-to { total-ratings: u0, rating-count: u0 } 
+                (map-get? AverageRatings seller)))
+        )
+        (asserts! (<= rating u5) ERR-INVALID-AMOUNT)
+        (map-set SellerRatings { seller: seller, reviewer: buyer } rating)
+        (map-set AverageRatings seller {
+            total-ratings: (+ (get total-ratings current-avg) rating),
+            rating-count: (+ (get rating-count current-avg) u1)
+        })
+        (ok true)
+    )
+)
+
+
+(define-map ListingTimeLimits
+    uint
+    uint
+)
+
+(define-public (create-timed-listing (price uint) (description (string-ascii 256)) (duration uint))
+    (let
+        (
+            (sender tx-sender)
+            (listing-id (var-get listing-nonce))
+            (expiry (+ stacks-block-height duration))
+        )
+        (asserts! (is-verified sender) ERR-NOT-VERIFIED)
+        (map-set Listings listing-id {
+            seller: sender,
+            price: price,
+            description: description,
+            active: true,
+            buyer: none,
+            escrow-amount: (calculate-escrow price)
+        })
+        (map-set ListingTimeLimits listing-id expiry)
+        (var-set listing-nonce (+ listing-id u1))
+        (ok listing-id)
+    )
+)
+
+
+(define-map BulkDiscounts
+    uint
+    { min-quantity: uint, discount-percentage: uint }
+)
+
+(define-public (set-bulk-discount (listing-id uint) (min-quantity uint) (discount-percentage uint))
+    (let
+        (
+            (listing (unwrap! (map-get? Listings listing-id) ERR-LISTING-NOT-FOUND))
+        )
+        (asserts! (is-eq tx-sender (get seller listing)) ERR-NOT-AUTHORIZED)
+        (map-set BulkDiscounts listing-id {
+            min-quantity: min-quantity,
+            discount-percentage: discount-percentage
+        })
+        (ok true)
+    )
+)
+
+(define-map Wishlists
+    { user: principal, listing-id: uint }
+    bool
+)
+
+(define-public (add-to-wishlist (listing-id uint))
+    (begin
+        (map-set Wishlists { user: tx-sender, listing-id: listing-id } true)
+        (ok true)
+    )
+)
+
+(define-public (remove-from-wishlist (listing-id uint))
+    (begin
+        (map-delete Wishlists { user: tx-sender, listing-id: listing-id })
+        (ok true)
+    )
+)
+
+
+(define-constant REFERRAL-REWARD-PERCENTAGE u1)
+
+(define-map Referrals
+    principal
+    principal
+)
+
+(define-public (register-referral (referrer principal))
+    (begin
+        (asserts! (not (is-eq tx-sender referrer)) ERR-NOT-AUTHORIZED)
+        (map-set Referrals tx-sender referrer)
+        (ok true)
+    )
+)
+
+(define-public (process-referral-reward (listing-id uint))
+    (let
+        (
+            (listing (unwrap! (map-get? Listings listing-id) ERR-LISTING-NOT-FOUND))
+            (referrer (map-get? Referrals tx-sender))
+            (reward-amount (/ (* (get price listing) REFERRAL-REWARD-PERCENTAGE) u100))
+        )
+        (match referrer referrer-principal
+            (begin
+                (try! (as-contract (stx-transfer? reward-amount (as-contract tx-sender) referrer-principal)))
+                (ok true)
+            )
+            (ok false)
+        )
+    )
+)
+
+
+(define-map CounterOffers
+    { listing-id: uint, buyer: principal }
+    { amount: uint, status: (string-ascii 10) }
+)
+
+(define-public (make-counter-offer (listing-id uint) (offer-amount uint))
+    (let
+        (
+            (listing (unwrap! (map-get? Listings listing-id) ERR-LISTING-NOT-FOUND))
+        )
+        (asserts! (get active listing) ERR-LISTING-NOT-FOUND)
+        (map-set CounterOffers { listing-id: listing-id, buyer: tx-sender }
+            { amount: offer-amount, status: "PENDING" }
+        )
+        (ok true)
+    )
+)
+
+(define-public (accept-counter-offer (listing-id uint) (buyer principal))
+    (let
+        (
+            (listing (unwrap! (map-get? Listings listing-id) ERR-LISTING-NOT-FOUND))
+            (offer (unwrap! (map-get? CounterOffers { listing-id: listing-id, buyer: buyer }) (err u200)))
+        )
+        (asserts! (is-eq tx-sender (get seller listing)) ERR-NOT-AUTHORIZED)
+        (map-set CounterOffers { listing-id: listing-id, buyer: buyer }
+            (merge offer { status: "ACCEPTED" })
+        )
+        (ok true)
+    )
+)
+
+
