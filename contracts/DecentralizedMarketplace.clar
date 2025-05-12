@@ -374,3 +374,96 @@
 )
 
 
+
+
+
+(define-constant BASIC-TIER-FEE u100000000)
+(define-constant PREMIUM-TIER-FEE u500000000) 
+(define-constant ELITE-TIER-FEE u1000000000)
+
+(define-map SellerTiers
+    principal
+    {
+        tier: (string-ascii 10),
+        expiry: uint,
+        listings-remaining: uint
+    }
+)
+
+(define-map TierBenefits
+    (string-ascii 10)
+    {
+        escrow-rate: uint,
+        max-listings: uint
+    }
+)
+
+(define-public (initialize-tier-benefits)
+    (begin
+        (map-set TierBenefits "BASIC" {escrow-rate: u5, max-listings: u10})
+        (map-set TierBenefits "PREMIUM" {escrow-rate: u3, max-listings: u50})
+        (map-set TierBenefits "ELITE" {escrow-rate: u1, max-listings: u100})
+        (ok true)
+    )
+)
+
+(define-public (subscribe-to-tier (tier-name (string-ascii 10)))
+    (let
+        (
+            (fee (if (is-eq tier-name "BASIC") 
+                BASIC-TIER-FEE
+                (if (is-eq tier-name "PREMIUM")
+                    PREMIUM-TIER-FEE
+                    ELITE-TIER-FEE)))
+            (benefits (unwrap! (map-get? TierBenefits tier-name) ERR-INVALID-AMOUNT))
+        )
+        (try! (stx-transfer? fee tx-sender (as-contract tx-sender)))
+        (map-set SellerTiers tx-sender {
+            tier: tier-name,
+            expiry: (+ stacks-block-height u52560),
+            listings-remaining: (get max-listings benefits)
+        })
+        (ok true)
+    )
+)
+
+(define-map CategoryPriceHistory
+    uint
+    {
+        total-sales: uint,
+        total-value: uint,
+        last-updated: uint
+    }
+)
+
+(define-map ListingPriceAdjustments
+    uint
+    {
+        original-price: uint,
+        current-price: uint,
+        last-adjustment: uint
+    }
+)
+
+(define-public (update-dynamic-price (listing-id uint))
+    (let
+        (
+            (listing (unwrap! (map-get? Listings listing-id) ERR-LISTING-NOT-FOUND))
+            (category-id (unwrap! (map-get? ListingCategories listing-id) ERR-LISTING-NOT-FOUND))
+            (price-history (default-to {total-sales: u0, total-value: u0, last-updated: u0} 
+                (map-get? CategoryPriceHistory category-id)))
+            (avg-price (if (> (get total-sales price-history) u0)
+                (/ (get total-value price-history) (get total-sales price-history))
+                u0))
+            (new-price (if (> avg-price u0)
+                (+ (get price listing) (/ (- avg-price (get price listing)) u10))
+                (get price listing)))
+        )
+        (map-set ListingPriceAdjustments listing-id {
+            original-price: (get price listing),
+            current-price: new-price,
+            last-adjustment: stacks-block-height
+        })
+        (ok true)
+    )
+)
