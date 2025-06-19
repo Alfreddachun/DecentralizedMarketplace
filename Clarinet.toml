@@ -5,6 +5,11 @@ authors = []
 telemetry = true
 cache_dir = '.\.cache'
 requirements = []
+[contracts.AutoEscrowRelease]
+path = 'contracts/AutoEscrowRelease.clar'
+clarity_version = 3
+epoch = 3.1
+
 [contracts.DecentralizedMarketplace]
 path = 'contracts/DecentralizedMarketplace.clar'
 clarity_version = 3
