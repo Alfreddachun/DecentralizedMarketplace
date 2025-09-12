@@ -373,6 +373,24 @@
     )
 )
 
+(define-public (purchase-listing-with-affiliate (listing-id uint) (affiliate-code (string-ascii 40)))
+  (let
+    (
+      (listing (unwrap! (map-get? Listings listing-id) ERR-LISTING-NOT-FOUND))
+      (buyer tx-sender)
+      (total-amount (+ (get price listing) (get escrow-amount listing)))
+    )
+    (asserts! (get active listing) ERR-LISTING-NOT-FOUND)
+    (try! (stx-transfer? total-amount buyer (as-contract tx-sender)))
+    (map-set Listings listing-id (merge listing {
+      active: false,
+      buyer: (some buyer)
+    }))
+    (try! (contract-call? .AffiliateProgram record-affiliated-purchase listing-id buyer affiliate-code))
+    (ok true)
+  )
+)
+
 
 
 
