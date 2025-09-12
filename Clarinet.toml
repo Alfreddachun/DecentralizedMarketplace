@@ -1,0 +1,44 @@
+[project]
+name = 'DecentralizedMarketplace'
+description = ''
+authors = []
+telemetry = true
+cache_dir = '.\.cache'
+requirements = []
+[contracts.AutoEscrowRelease]
+path = 'contracts/AutoEscrowRelease.clar'
+clarity_version = 3
+epoch = 3.1
+
+[contracts.SellerReputation]
+path = 'contracts/SellerReputation.clar'
+clarity_version = 3
+epoch = 3.1
+
+[contracts.DecentralizedMarketplace]
+path = 'contracts/DecentralizedMarketplace.clar'
+clarity_version = 3
+epoch = 3.1
+
+[contracts.InventoryManager]
+path = 'contracts/InventoryManager.clar'
+clarity_version = 3
+epoch = 3.1
+
+[contracts.AffiliateProgram]
+path = 'contracts/AffiliateProgram.clar'
+clarity_version = 3
+epoch = 3.1
+
+[contracts.DynamicPricing]
+path = 'contracts/DynamicPricing.clar'
+clarity_version = 3
+epoch = 3.1
+[repl.analysis]
+passes = ['check_checker']
+
+[repl.analysis.check_checker]
+strict = false
+trusted_sender = false
+trusted_caller = false
+callee_filter = false
